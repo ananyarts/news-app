@@ -8,7 +8,25 @@ and logged through the project's own REST endpoint, `/api/approved/`.
 Design notes (requirements, database schema and UI plan) are in
 [PLANNING.md](PLANNING.md).
 
-## Setup
+Contents: [Run with venv](#option-1-run-with-a-virtual-environment-venv) ·
+[Run with Docker](#option-2-run-with-docker) ·
+[Secrets](#secrets-and-configuration) ·
+[Documentation](#documentation)
+
+## Requirements
+
+- Python 3.12 or newer (for the venv option)
+- [Docker](https://docs.docker.com/get-docker/) (for the Docker option)
+- Git, to clone the repository:
+
+```bash
+git clone <repository-url>
+cd <repository-folder>
+```
+
+## Option 1: Run with a virtual environment (venv)
+
+### 1. Create the environment and install packages
 
 ```bash
 python3 -m venv .venv
@@ -19,7 +37,7 @@ pip install -r requirements.txt
 On Windows, activate the virtual environment with
 `.venv\Scripts\activate` instead.
 
-### Configuration: the `.env` file
+### 2. Configuration: the `.env` file
 
 Settings such as the secret key and database credentials are read from a
 `.env` file in the project root (loaded with `python-dotenv`). Copy the
@@ -34,7 +52,7 @@ environment variables override values in `.env`.
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `DJANGO_SECRET_KEY` | Django secret key | development-only key |
+| `DJANGO_SECRET_KEY` | Django secret key (see [Secrets](#secrets-and-configuration)) | random key generated at start-up |
 | `DJANGO_DEBUG` | `True` or `False` | `True` |
 | `DJANGO_ALLOWED_HOSTS` | comma-separated host names | `127.0.0.1,localhost,testserver` |
 | `DB_ENGINE` | `mariadb` or `sqlite` | `mariadb` |
@@ -42,7 +60,7 @@ environment variables override values in `.env`.
 | `DEFAULT_FROM_EMAIL` | sender for subscriber emails | `newsroom@news-app.local` |
 | `APPROVED_API_URL` | endpoint the approval flow POSTs to | `http://127.0.0.1:8000/api/approved/` |
 
-### Database: MariaDB (default)
+### 3. Database: MariaDB (default)
 
 Create the database and user named in your `.env`:
 
@@ -65,7 +83,7 @@ To run on SQLite instead (useful for quick local testing), set
 `migrate` creates the **Reader**, **Journalist** and **Editor** groups and
 their permissions automatically.
 
-### Run
+### 4. Run
 
 ```bash
 python manage.py createsuperuser  # site administrator, for /admin/
@@ -79,6 +97,80 @@ Demo data is optional. `python manage.py seed_demo` creates the logins
 `reader`, `journalist` and `editor` (password `NewsDemo123!`) plus one
 publisher and some articles. The app does not need it: publishers can be
 created and managed as described below.
+
+## Option 2: Run with Docker
+
+The repository includes a `Dockerfile`. The container uses SQLite by
+default, so no database server is needed. This also works on
+[Play with Docker](https://labs.play-with-docker.com/).
+
+### 1. Build the image
+
+From the project root (the folder containing `Dockerfile`):
+
+```bash
+docker build -t daily-brief .
+```
+
+### 2. Start a container
+
+```bash
+docker run -d --name daily-brief -p 8000:8000 -e DJANGO_SECRET_KEY="<your-secret-key>" daily-brief
+```
+
+The container runs `migrate` and then starts the server. Open
+<http://127.0.0.1:8000/> (on Play with Docker, click the **8000** port
+badge). If you leave out `DJANGO_SECRET_KEY`, a random key is generated
+each time the container starts.
+
+### 3. Optional: demo data and an admin account
+
+```bash
+docker exec -it daily-brief python manage.py seed_demo
+docker exec -it daily-brief python manage.py createsuperuser
+```
+
+### 4. Stop and remove the container
+
+```bash
+docker stop daily-brief
+docker rm daily-brief
+```
+
+To use MariaDB instead of SQLite, pass `-e DB_ENGINE=mariadb` and the
+`DB_*` variables (for example with `--env-file .env`).
+
+## Secrets and configuration
+
+No passwords, keys or tokens are stored in this repository. `.env` is
+listed in `.gitignore`; only the template `.env.example` is committed.
+To set up your own values:
+
+1. Copy the template: `cp .env.example .env`.
+2. Generate a secret key and paste it in as `DJANGO_SECRET_KEY`:
+
+   ```bash
+   python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+   ```
+
+3. Choose your own database name, user and password (`DB_*`) and use the
+   same values when you create the MariaDB user (Option 1, step 3).
+4. For Docker, pass the values with `-e NAME=value` or `--env-file .env`.
+
+API tokens are created per user at `POST /api/token/` and are never
+committed.
+
+## Documentation
+
+Developer documentation is generated from the code's docstrings with
+Sphinx. The built HTML is committed in `docs/_build/html/`, so open
+`docs/_build/html/index.html` in a browser to read it.
+
+To rebuild it after changing docstrings:
+
+```bash
+sphinx-build -b html docs docs/_build/html
+```
 
 ## Managing publishers
 
