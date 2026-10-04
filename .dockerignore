@@ -1,0 +1,12 @@
+# Keep the image small and free of secrets and local artefacts.
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+*.pyc
+.env
+db.sqlite3
+docs/_build
+.DS_Store
