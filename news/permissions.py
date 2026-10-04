@@ -1,11 +1,22 @@
-"""Role-based permission classes for the API."""
+"""Role-based permission classes for the REST API.
+
+Each class is used by a view in :mod:`news.api_views`. Django REST
+Framework calls ``has_permission`` for every request and
+``has_object_permission`` when a single object is retrieved, updated
+or deleted.
+"""
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class ArticlePermission(BasePermission):
-    """Readers view; journalists create; editors and owning journalists
-    update/delete."""
+    """Control access to articles by role.
+
+    * Any signed-in user may view articles.
+    * Only journalists may create articles.
+    * Editors may update or delete any article; journalists only their
+      own.
+    """
 
     def has_permission(self, request, view):
         """Check the caller's role for the request method."""
@@ -30,8 +41,12 @@ class ArticlePermission(BasePermission):
 
 
 class NewsletterPermission(BasePermission):
-    """Signed-in users view; journalists and editors create; the author
-    or an editor updates and deletes."""
+    """Control access to newsletters by role.
+
+    * Any signed-in user may view newsletters.
+    * Journalists and editors may create newsletters.
+    * The newsletter's author or an editor may update or delete it.
+    """
 
     def has_permission(self, request, view):
         """Anyone signed in may read; journalists and editors may write."""
