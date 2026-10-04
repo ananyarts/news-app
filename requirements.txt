@@ -3,3 +3,4 @@ djangorestframework==3.18.1
 requests==2.34.2
 python-dotenv==1.2.4
 mysqlclient>=2.2
+sphinx==9.1.0

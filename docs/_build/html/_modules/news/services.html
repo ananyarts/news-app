@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>news.services &#8212; The Daily Brief 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=f6a572b4" />
+    <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">The Daily Brief</a></h1>
+
+
+
+<p class="blurb">A Django news application</p>
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../usage.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">API reference</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for news.services</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Business logic for approving articles (Option 2: no signals).</span>
+
+<span class="sd">The approval view (web and API) calls :func:`approve_article`, which</span>
+<span class="sd">marks the article approved, emails subscribers and posts the article</span>
+<span class="sd">to the internal ``/api/approved/`` endpoint.</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.conf</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.core.mail</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmailMessage</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">transaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Q</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">django.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rest_framework.authtoken.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Token</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">CustomUser</span><span class="p">,</span> <span class="n">Role</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_subscriber_emails">
+<a class="viewcode-back" href="../../modules.html#news.services.get_subscriber_emails">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_subscriber_emails</span><span class="p">(</span><span class="n">article</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Return the emails of readers subscribed to an article's source.</span>
+
+<span class="sd">    A reader is included if they follow the article's journalist or its</span>
+<span class="sd">    publisher. Readers without an email address are skipped.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        article (Article): The article whose subscribers are wanted.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list[str]: Unique email addresses, sorted alphabetically. Empty</span>
+<span class="sd">        if the article has neither an author nor a publisher.</span>
+<span class="sd">    """</span>
+    <span class="n">subscription_filter</span> <span class="o">=</span> <span class="n">Q</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">article</span><span class="o">.</span><span class="n">author_id</span><span class="p">:</span>
+        <span class="n">subscription_filter</span> <span class="o">|=</span> <span class="n">Q</span><span class="p">(</span><span class="n">subscribed_journalists</span><span class="o">=</span><span class="n">article</span><span class="o">.</span><span class="n">author</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">article</span><span class="o">.</span><span class="n">publisher_id</span><span class="p">:</span>
+        <span class="n">subscription_filter</span> <span class="o">|=</span> <span class="n">Q</span><span class="p">(</span><span class="n">subscribed_publishers</span><span class="o">=</span><span class="n">article</span><span class="o">.</span><span class="n">publisher</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">subscription_filter</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="n">emails</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">CustomUser</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">subscription_filter</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="n">Role</span><span class="o">.</span><span class="n">READER</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="s1">''</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">values_list</span><span class="p">(</span><span class="s1">'email'</span><span class="p">,</span> <span class="n">flat</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">distinct</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">emails</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="email_subscribers">
+<a class="viewcode-back" href="../../modules.html#news.services.email_subscribers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">email_subscribers</span><span class="p">(</span><span class="n">article</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Email the approved article to its subscribers.</span>
+
+<span class="sd">    Subscribers are sent the article by Bcc so their addresses stay</span>
+<span class="sd">    private. Mail errors are logged, not raised, so a mail outage never</span>
+<span class="sd">    blocks an approval.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        article (Article): The approved article to send.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        int: The number of recipients, or 0 if there were none or the</span>
+<span class="sd">        email could not be sent.</span>
+<span class="sd">    """</span>
+    <span class="n">recipients</span> <span class="o">=</span> <span class="n">get_subscriber_emails</span><span class="p">(</span><span class="n">article</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">recipients</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+    <span class="n">source</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">publisher</span><span class="o">.</span><span class="n">name</span> <span class="k">if</span> <span class="n">article</span><span class="o">.</span><span class="n">publisher</span> <span class="k">else</span> <span class="s1">'Independent'</span>
+    <span class="n">author</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">author</span>
+    <span class="n">byline</span> <span class="o">=</span> <span class="p">(</span><span class="n">author</span><span class="o">.</span><span class="n">get_full_name</span><span class="p">()</span> <span class="ow">or</span> <span class="n">author</span><span class="o">.</span><span class="n">username</span><span class="p">)</span> <span class="k">if</span> <span class="n">author</span> <span class="k">else</span> <span class="s1">''</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">article</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span>
+        <span class="sa">f</span><span class="s1">'By </span><span class="si">{</span><span class="n">byline</span><span class="si">}</span><span class="s1"> - </span><span class="si">{</span><span class="n">source</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">'</span>
+        <span class="sa">f</span><span class="s1">'</span><span class="si">{</span><span class="n">article</span><span class="o">.</span><span class="n">content</span><span class="si">}</span><span class="se">\n</span><span class="s1">'</span>
+    <span class="p">)</span>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">EmailMessage</span><span class="p">(</span>
+        <span class="n">subject</span><span class="o">=</span><span class="sa">f</span><span class="s1">'New article: </span><span class="si">{</span><span class="n">article</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span>
+        <span class="n">body</span><span class="o">=</span><span class="n">body</span><span class="p">,</span>
+        <span class="n">from_email</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">DEFAULT_FROM_EMAIL</span><span class="p">,</span>
+        <span class="c1"># Bcc keeps subscribers' addresses private from each other.</span>
+        <span class="n">bcc</span><span class="o">=</span><span class="n">recipients</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">message</span><span class="o">.</span><span class="n">send</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 - any mail backend failure</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s1">'Could not email subscribers of article </span><span class="si">%s</span><span class="s1">'</span><span class="p">,</span>
+                         <span class="n">article</span><span class="o">.</span><span class="n">pk</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">recipients</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="post_to_approved_api">
+<a class="viewcode-back" href="../../modules.html#news.services.post_to_approved_api">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">post_to_approved_api</span><span class="p">(</span><span class="n">article</span><span class="p">,</span> <span class="n">editor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""POST the approved article to the ``/api/approved/`` endpoint.</span>
+
+<span class="sd">    The request is authenticated with the approving editor's API token,</span>
+<span class="sd">    which is created if the editor does not have one yet. Network and</span>
+<span class="sd">    HTTP errors are logged, not raised.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        article (Article): The approved article to log.</span>
+<span class="sd">        editor (CustomUser): The editor who approved the article.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if the endpoint accepted the article, otherwise False.</span>
+<span class="sd">    """</span>
+    <span class="n">token</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">Token</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">get_or_create</span><span class="p">(</span><span class="n">user</span><span class="o">=</span><span class="n">editor</span><span class="p">)</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">'article'</span><span class="p">:</span> <span class="n">article</span><span class="o">.</span><span class="n">pk</span><span class="p">,</span>
+        <span class="s1">'title'</span><span class="p">:</span> <span class="n">article</span><span class="o">.</span><span class="n">title</span><span class="p">,</span>
+        <span class="s1">'author_name'</span><span class="p">:</span> <span class="n">article</span><span class="o">.</span><span class="n">author</span><span class="o">.</span><span class="n">username</span> <span class="k">if</span> <span class="n">article</span><span class="o">.</span><span class="n">author</span> <span class="k">else</span> <span class="s1">''</span><span class="p">,</span>
+        <span class="s1">'publisher_name'</span><span class="p">:</span> <span class="n">article</span><span class="o">.</span><span class="n">publisher</span><span class="o">.</span><span class="n">name</span> <span class="k">if</span> <span class="n">article</span><span class="o">.</span><span class="n">publisher</span> <span class="k">else</span> <span class="s1">''</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="n">settings</span><span class="o">.</span><span class="n">APPROVED_API_URL</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s1">'Authorization'</span><span class="p">:</span> <span class="sa">f</span><span class="s1">'Token </span><span class="si">{</span><span class="n">token</span><span class="o">.</span><span class="n">key</span><span class="si">}</span><span class="s1">'</span><span class="p">},</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="n">settings</span><span class="o">.</span><span class="n">APPROVED_API_TIMEOUT</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">RequestException</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s1">'Could not post article </span><span class="si">%s</span><span class="s1"> to </span><span class="si">%s</span><span class="s1">'</span><span class="p">,</span>
+                         <span class="n">article</span><span class="o">.</span><span class="n">pk</span><span class="p">,</span> <span class="n">settings</span><span class="o">.</span><span class="n">APPROVED_API_URL</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="approve_article">
+<a class="viewcode-back" href="../../modules.html#news.services.approve_article">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">approve_article</span><span class="p">(</span><span class="n">article</span><span class="p">,</span> <span class="n">editor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Approve ``article`` as ``editor`` and share it.</span>
+
+<span class="sd">    The article is marked approved and stamped with the editor and the</span>
+<span class="sd">    time. Once the database transaction commits, subscribers are emailed</span>
+<span class="sd">    and the article is posted to ``/api/approved/``.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        article (Article): The article to approve.</span>
+<span class="sd">        editor (CustomUser): The user approving the article.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Article: The updated, approved article.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PermissionError: If ``editor`` does not have the Editor role.</span>
+<span class="sd">        ValueError: If the article has already been approved.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">editor</span><span class="o">.</span><span class="n">is_editor</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">PermissionError</span><span class="p">(</span><span class="s1">'Only editors can approve articles.'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">article</span><span class="o">.</span><span class="n">approved</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">'This article has already been approved.'</span><span class="p">)</span>
+
+    <span class="n">article</span><span class="o">.</span><span class="n">approved</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">article</span><span class="o">.</span><span class="n">approved_by</span> <span class="o">=</span> <span class="n">editor</span>
+    <span class="n">article</span><span class="o">.</span><span class="n">approved_at</span> <span class="o">=</span> <span class="n">timezone</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+    <span class="n">article</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">update_fields</span><span class="o">=</span><span class="p">[</span><span class="s1">'approved'</span><span class="p">,</span> <span class="s1">'approved_by'</span><span class="p">,</span> <span class="s1">'approved_at'</span><span class="p">,</span>
+                                <span class="s1">'updated_at'</span><span class="p">])</span>
+
+    <span class="c1"># Notify only once the approval is committed to the database.</span>
+    <span class="n">transaction</span><span class="o">.</span><span class="n">on_commit</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">_share_article</span><span class="p">(</span><span class="n">article</span><span class="p">,</span> <span class="n">editor</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">article</span></div>
+
+
+
+<div class="viewcode-block" id="_share_article">
+<a class="viewcode-back" href="../../modules.html#news.services._share_article">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">_share_article</span><span class="p">(</span><span class="n">article</span><span class="p">,</span> <span class="n">editor</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Email subscribers and log the article at ``/api/approved/``.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        article (Article): The newly approved article.</span>
+<span class="sd">        editor (CustomUser): The editor who approved it.</span>
+<span class="sd">    """</span>
+    <span class="n">email_subscribers</span><span class="p">(</span><span class="n">article</span><span class="p">)</span>
+    <span class="n">post_to_approved_api</span><span class="p">(</span><span class="n">article</span><span class="p">,</span> <span class="n">editor</span><span class="p">)</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &#169;2026, Ananya Singh.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
