@@ -29,11 +29,26 @@ def role_required(*roles):
 
     Anonymous users are redirected to the login page; signed-in users
     with another role get a 403 Forbidden response.
+
+    Example::
+
+        @role_required(Role.EDITOR)
+        def review_queue(request):
+            ...
+
+    Args:
+        *roles (str): The :class:`~news.models.Role` values allowed to
+            use the view.
+
+    Returns:
+        Callable: A decorator that wraps a view function.
     """
     def decorator(view_func):
+        """Wrap ``view_func`` with the login and role checks."""
         @wraps(view_func)
         @login_required
         def wrapper(request, *args, **kwargs):
+            """Run the view, or raise PermissionDenied for other roles."""
             if request.user.role not in roles:
                 raise PermissionDenied
             return view_func(request, *args, **kwargs)
