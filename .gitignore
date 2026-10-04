@@ -43,7 +43,7 @@ coverage.xml
 
 # Sphinx: keep the generated HTML in docs/_build/html, but drop the
 # intermediate build cache.
-docs/_build/doctrees/
+docs/_build/html/.doctrees/
 docs/_build/html/.buildinfo
 
 # IDEs and editors

@@ -21,8 +21,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_subscriber_emails(article):
-    """Return the unique emails of readers subscribed to the article's
-    journalist or publisher."""
+    """Return the emails of readers subscribed to an article's source.
+
+    A reader is included if they follow the article's journalist or its
+    publisher. Readers without an email address are skipped.
+
+    Args:
+        article (Article): The article whose subscribers are wanted.
+
+    Returns:
+        list[str]: Unique email addresses, sorted alphabetically. Empty
+        if the article has neither an author nor a publisher.
+    """
     subscription_filter = Q()
     if article.author_id:
         subscription_filter |= Q(subscribed_journalists=article.author)
@@ -42,8 +52,16 @@ def get_subscriber_emails(article):
 def email_subscribers(article):
     """Email the approved article to its subscribers.
 
-    Returns the number of recipients. Mail errors are logged, not
-    raised, so a mail outage never blocks an approval.
+    Subscribers are sent the article by Bcc so their addresses stay
+    private. Mail errors are logged, not raised, so a mail outage never
+    blocks an approval.
+
+    Args:
+        article (Article): The approved article to send.
+
+    Returns:
+        int: The number of recipients, or 0 if there were none or the
+        email could not be sent.
     """
     recipients = get_subscriber_emails(article)
     if not recipients:
@@ -74,9 +92,18 @@ def email_subscribers(article):
 
 
 def post_to_approved_api(article, editor):
-    """POST the approved article to our own ``/api/approved/`` endpoint.
+    """POST the approved article to the ``/api/approved/`` endpoint.
 
-    Uses the approving editor's API token. Returns True on success.
+    The request is authenticated with the approving editor's API token,
+    which is created if the editor does not have one yet. Network and
+    HTTP errors are logged, not raised.
+
+    Args:
+        article (Article): The approved article to log.
+        editor (CustomUser): The editor who approved the article.
+
+    Returns:
+        bool: True if the endpoint accepted the article, otherwise False.
     """
     token, _ = Token.objects.get_or_create(user=editor)
     payload = {
@@ -103,8 +130,20 @@ def post_to_approved_api(article, editor):
 def approve_article(article, editor):
     """Approve ``article`` as ``editor`` and share it.
 
-    Raises PermissionError if the user is not an editor and ValueError
-    if the article is already approved.
+    The article is marked approved and stamped with the editor and the
+    time. Once the database transaction commits, subscribers are emailed
+    and the article is posted to ``/api/approved/``.
+
+    Args:
+        article (Article): The article to approve.
+        editor (CustomUser): The user approving the article.
+
+    Returns:
+        Article: The updated, approved article.
+
+    Raises:
+        PermissionError: If ``editor`` does not have the Editor role.
+        ValueError: If the article has already been approved.
     """
     if not editor.is_editor:
         raise PermissionError('Only editors can approve articles.')
@@ -123,6 +162,11 @@ def approve_article(article, editor):
 
 
 def _share_article(article, editor):
-    """Email subscribers and log the article at ``/api/approved/``."""
+    """Email subscribers and log the article at ``/api/approved/``.
+
+    Args:
+        article (Article): The newly approved article.
+        editor (CustomUser): The editor who approved it.
+    """
     email_subscribers(article)
     post_to_approved_api(article, editor)
