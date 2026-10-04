@@ -1,0 +1,18 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<h1>Review queue</h1>
+{% for article in articles %}
+<div class="card">
+  {% include 'news/_article_card.html' %}
+  <div class="actions">
+    <form method="post" action="{% url 'article_approve' article.pk %}" class="inline">
+      {% csrf_token %}<button>Approve &amp; publish</button>
+    </form>
+    <a class="button secondary" href="{% url 'article_update' article.pk %}">Edit</a>
+    <a class="button danger" href="{% url 'article_delete' article.pk %}">Reject &amp; delete</a>
+  </div>
+</div>
+{% empty %}
+  <p class="empty">Nothing waiting for review.</p>
+{% endfor %}
+{% endblock %}

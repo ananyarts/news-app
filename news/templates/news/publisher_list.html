@@ -1,0 +1,14 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<div class="page-head"><h1>Publishers</h1>
+{% if can_create %}<a class="button" href="{% url 'publisher_create' %}">New publisher</a>{% endif %}
+</div>
+{% for publisher in publishers %}
+<div class="card">
+  <h2><a href="{% url 'publisher_detail' publisher.pk %}">{{ publisher.name }}</a></h2>
+  <p>{{ publisher.description|truncatewords:30 }}</p>
+</div>
+{% empty %}
+  <p class="empty">No publishers yet.</p>
+{% endfor %}
+{% endblock %}

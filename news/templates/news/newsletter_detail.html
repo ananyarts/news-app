@@ -1,0 +1,17 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<h1>{{ newsletter.title }}</h1>
+<p class="meta">Curated by {{ newsletter.author.username|default:"Unknown" }} &middot; {{ newsletter.created_at|date:"j M Y" }}</p>
+<p>{{ newsletter.description }}</p>
+{% if can_edit %}
+<div class="actions">
+  <a class="button secondary" href="{% url 'newsletter_update' newsletter.pk %}">Edit</a>
+  <a class="button danger" href="{% url 'newsletter_delete' newsletter.pk %}">Delete</a>
+</div>
+{% endif %}
+{% for article in articles %}
+  {% include 'news/_article_card.html' %}
+{% empty %}
+  <p class="empty">No articles in this newsletter.</p>
+{% endfor %}
+{% endblock %}

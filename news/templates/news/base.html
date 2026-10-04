@@ -1,0 +1,42 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}The Daily Brief{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'news/style.css' %}">
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap nav">
+    <a class="brand" href="{% url 'home' %}">The Daily Brief</a>
+    <nav>
+      <a href="{% url 'home' %}">Articles</a>
+      <a href="{% url 'newsletter_list' %}">Newsletters</a>
+      <a href="{% url 'publisher_list' %}">Publishers</a>
+      {% if user.is_authenticated %}
+        {% if user.is_reader %}<a href="{% url 'my_subscriptions' %}">My feed</a>{% endif %}
+        {% if user.is_journalist %}
+          <a href="{% url 'my_articles' %}">My articles</a>
+          <a href="{% url 'article_create' %}">Write</a>
+        {% endif %}
+        {% if user.is_editor %}<a href="{% url 'review_queue' %}">Review queue</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}" class="inline">
+          {% csrf_token %}
+          <button class="link">Log out {{ user.username }} <span class="badge">{{ user.get_role_display }}</span></button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a>
+        <a class="button" href="{% url 'register' %}">Sign up</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  {% for message in messages %}
+    <div class="message {{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

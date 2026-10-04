@@ -1,0 +1,11 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<div class="page-head"><h1>{{ journalist.get_full_name|default:journalist.username }}</h1>
+{% include 'news/_subscribe_button.html' with kind='journalist' pk=journalist.pk %}
+</div>
+{% for article in articles %}
+  {% include 'news/_article_card.html' %}
+{% empty %}
+  <p class="empty">No published articles yet.</p>
+{% endfor %}
+{% endblock %}

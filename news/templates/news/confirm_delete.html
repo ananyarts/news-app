@@ -1,0 +1,10 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<h1>Delete "{{ object }}"?</h1>
+<form method="post" class="panel">
+  {% csrf_token %}
+  <p>This cannot be undone.</p>
+  <button class="danger">Yes, delete</button>
+  <a href="javascript:history.back()">Cancel</a>
+</form>
+{% endblock %}

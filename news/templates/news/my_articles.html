@@ -1,0 +1,9 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<div class="page-head"><h1>My articles</h1><a class="button" href="{% url 'article_create' %}">Write an article</a></div>
+{% for article in articles %}
+  {% include 'news/_article_card.html' %}
+{% empty %}
+  <p class="empty">You haven't written anything yet.</p>
+{% endfor %}
+{% endblock %}

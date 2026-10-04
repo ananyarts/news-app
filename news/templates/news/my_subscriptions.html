@@ -1,0 +1,15 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<h1>My feed</h1>
+<div class="panel">
+  <p><strong>Publishers:</strong>
+  {% for p in publishers %}<a href="{% url 'publisher_detail' p.pk %}">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}none yet{% endfor %}</p>
+  <p><strong>Journalists:</strong>
+  {% for j in journalists %}<a href="{% url 'journalist_detail' j.pk %}">{{ j.username }}</a>{% if not forloop.last %}, {% endif %}{% empty %}none yet{% endfor %}</p>
+</div>
+{% for article in articles %}
+  {% include 'news/_article_card.html' %}
+{% empty %}
+  <p class="empty">Subscribe to publishers or journalists to fill your feed.</p>
+{% endfor %}
+{% endblock %}

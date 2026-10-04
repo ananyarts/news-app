@@ -1,0 +1,24 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<div class="page-head"><h1>{{ publisher.name }}</h1>
+{% include 'news/_subscribe_button.html' with kind='publisher' pk=publisher.pk %}
+</div>
+<p>{{ publisher.description }}</p>
+{% if can_manage %}
+<div class="actions">
+  <a class="button secondary" href="{% url 'publisher_update' publisher.pk %}">Manage publisher &amp; staff</a>
+  <a class="button danger" href="{% url 'publisher_delete' publisher.pk %}">Delete publisher</a>
+</div>
+{% endif %}
+<p class="meta">Editors:
+{% for editor in publisher.editors.all %}{{ editor.get_full_name|default:editor.username }}{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}
+</p>
+<p class="meta">Journalists:
+{% for journalist in publisher.journalists.all %}<a href="{% url 'journalist_detail' journalist.pk %}">{{ journalist.username }}</a>{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}
+</p>
+{% for article in articles %}
+  {% include 'news/_article_card.html' %}
+{% empty %}
+  <p class="empty">No published articles yet.</p>
+{% endfor %}
+{% endblock %}

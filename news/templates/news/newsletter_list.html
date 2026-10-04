@@ -1,0 +1,15 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<div class="page-head"><h1>Newsletters</h1>
+{% if user.is_journalist or user.is_editor %}<a class="button" href="{% url 'newsletter_create' %}">New newsletter</a>{% endif %}
+</div>
+{% for newsletter in newsletters %}
+<div class="card">
+  <h2><a href="{% url 'newsletter_detail' newsletter.pk %}">{{ newsletter.title }}</a></h2>
+  <p class="meta">{{ newsletter.author.username|default:"Unknown" }} &middot; {{ newsletter.created_at|date:"j M Y" }}</p>
+  <p>{{ newsletter.description|truncatewords:30 }}</p>
+</div>
+{% empty %}
+  <p class="empty">No newsletters yet.</p>
+{% endfor %}
+{% endblock %}

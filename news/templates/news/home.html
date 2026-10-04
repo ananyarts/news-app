@@ -1,0 +1,22 @@
+{% extends 'news/base.html' %}
+{% block content %}
+<div class="page-head">
+  <h1>Latest news</h1>
+  <form method="get" class="search">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search articles">
+    <button>Search</button>
+  </form>
+</div>
+{% for article in page %}
+  {% include 'news/_article_card.html' %}
+{% empty %}
+  <p class="empty">No articles yet.</p>
+{% endfor %}
+{% if page.paginator.num_pages > 1 %}
+<div class="pager">
+  {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}&q={{ query|urlencode }}">&larr; Newer</a>{% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?page={{ page.next_page_number }}&q={{ query|urlencode }}">Older &rarr;</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
